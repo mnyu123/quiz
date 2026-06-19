@@ -1,28 +1,26 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { puzzles } from '../data/puzzles'
+import { puzzles as staticPuzzles } from '../data/puzzles'
 import { useProgressStore } from '../stores/progress'
 
 const route = useRoute()
 const store = useProgressStore()
 
 const puzzleId = Number(route.params.id)
-
-// ref로 감싸서, AI 문제를 비동기로 가져왔을 때 화면이 갱신되도록 합니다.
-const puzzle = ref(puzzles.find(p => p.id === puzzleId))
+const puzzle = ref(staticPuzzles.find(p => p.id === puzzleId))
+const isFetching = ref(!puzzle.value && puzzleId >= 11)
 
 onMounted(async () => {
-  // 정적 배열에 없고, AI 문제 번호(101 이상)라면 공용 저장소에서 찾아옵니다.
-  if (!puzzle.value && puzzleId >= 101) {
+  if (isFetching.value) {
     try {
       const response = await fetch('/.netlify/functions/get-ai-puzzles')
       if (response.ok) {
         const aiPuzzles = await response.json()
         puzzle.value = aiPuzzles.find(p => p.id === puzzleId)
       }
-    } catch (error) {
-      console.error('AI 문제를 불러오지 못했습니다.', error)
+    } finally {
+      isFetching.value = false
     }
   }
 })
@@ -30,97 +28,188 @@ onMounted(async () => {
 const userAnswer = ref('')
 const feedbackMessage = ref('')
 
-// 힌트 공개 로직
-const revealedHints = computed(() => store.usedHints[puzzleId] || [])
-const showHint = (index) => {
-  store.unlockHint(puzzleId, index)
+const submitAnswer = () => {
+  if (!userAnswer.value) return
+  const isCorrect = store.checkAnswer(puzzleId, userAnswer.value, puzzle.value.answer)
+  feedbackMessage.value = isCorrect ? '정답입니다! 🎉' : '틀렸습니다. 다시 생각해보세요. 🤔'
 }
 
-// 정답 제출 및 판정 로직
-const submitAnswer = () => {
-  if (!userAnswer.value) {
-    feedbackMessage.value = '정답을 선택하거나 입력해주세요.'
-    return
-  }
+const forceCorrect = () => {
+  store.solvedPuzzles.push(puzzleId)
+  feedbackMessage.value = 'AI 오류로 인해 통과 처리되었습니다. 🚀'
+}
+const isGeneratingImage = ref(false)
 
-  const isCorrect = store.checkAnswer(puzzleId, userAnswer.value, puzzle.answer)
+const generateImage = async () => {
+  if (!puzzle.value.image_prompt) return alert('이미지 프롬프트가 없습니다.')
   
-  if (isCorrect) {
-    feedbackMessage.value = '정답입니다! 🎉'
-  } else {
-    feedbackMessage.value = '틀렸습니다. 다시 생각해보세요.'
+  isGeneratingImage.value = true
+  try {
+    const response = await fetch('/.netlify/functions/generate-image', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        puzzleId: puzzle.value.id, 
+        prompt: puzzle.value.image_prompt 
+      })
+    })
+    const data = await response.json()
+    if (data.imageUrl) {
+      puzzle.value.imageUrl = data.imageUrl // 화면에 즉시 이미지 표시!
+    }
+  } catch (error) {
+    alert('이미지를 생성하지 못했습니다. (비용 혹은 시간 초과)')
+  } finally {
+    isGeneratingImage.value = false
   }
 }
 </script>
 
 <template>
-  <div v-if="puzzle" class="puzzle-detail">
-    <h2>{{ puzzle.id }}번: {{ puzzle.title }}</h2>
-    <p class="description">{{ puzzle.description }}</p>
-
-    <div class="hints">
-      <div v-for="(hint, index) in puzzle.hints" :key="index">
-        <button v-if="!revealedHints.includes(index)" @click="showHint(index)">
-          힌트 {{ index + 1 }} 보기
-        </button>
-        <p v-else class="revealed-hint">💡 힌트 {{ index + 1 }}: {{ hint }}</p>
-      </div>
-    </div>
-
-    <hr />
-
-    <div v-if="puzzle.type === 'choice'" class="input-area choice-area">
-      <div v-for="(option, index) in puzzle.options" :key="index">
-        <label>
-          <input type="radio" :value="option" v-model="userAnswer" />
-          {{ option }}
-        </label>
-      </div>
-    </div>
-
-    <div v-if="puzzle.type === 'text'" class="input-area text-area">
-      <input 
-        type="text" 
-        v-model="userAnswer" 
-        placeholder="정답을 입력하세요 (예: 5, 6)" 
-        @keyup.enter="submitAnswer"
-      />
-      <p class="input-guide">
-        * 정답이 여러 개인 경우 쉼표(,)나 띄어쓰기로 구분하여 입력해 주세요. (예: 5, 6 또는 5 6)
-      </p>
-    </div>
-
-    <button class="submit-btn" @click="submitAnswer">정답 제출</button>
-    <p class="feedback">{{ feedbackMessage }}</p>
-    
-    <router-link to="/">목록으로 돌아가기</router-link>
-  </div>
+  <div v-if="isFetching" class="loading">수수께끼를 불러오는 중...</div>
   
-  <div v-else>
-    <p>존재하지 않는 수수께끼입니다.</p>
-    <router-link to="/">목록으로 돌아가기</router-link>
+  <div v-else-if="puzzle" class="puzzle-container">
+    <div class="puzzle-card">
+      <div class="card-header">
+        <span class="puzzle-no">No. {{ String(puzzle.id).padStart(3, '0') }}</span>
+        <h2 class="puzzle-title">{{ puzzle.title }}</h2>
+      </div>
+
+      <div v-if="puzzle.imageUrl" class="puzzle-image">
+        <img :src="puzzle.imageUrl" alt="수수께끼 삽화" />
+      </div>
+
+      <div v-if="puzzle.imageUrl" class="puzzle-image">
+        <img :src="puzzle.imageUrl" alt="수수께끼 삽화" />
+      </div>
+
+      <div v-else-if="puzzle.id >= 11 && !puzzle.imageUrl" class="puzzle-image-placeholder">
+        <button @click="generateImage" :disabled="isGeneratingImage" class="generate-img-btn">
+          {{ isGeneratingImage ? '🎨 DALL-E 3가 삽화를 그리는 중... (약 15초)' : '🖼️ AI 삽화 생성하기 (50원 소모)' }}
+        </button>
+      </div>
+
+      <div class="puzzle-body">
+        <p class="description">{{ puzzle.description }}</p>
+      </div>
+
+      <div class="input-section">
+        <div v-if="puzzle.type === 'choice'" class="choice-grid">
+          <button 
+            v-for="opt in puzzle.options" 
+            :key="opt"
+            @click="userAnswer = opt; submitAnswer()"
+            :class="{ active: userAnswer === opt }"
+          >
+            {{ opt }}
+          </button>
+        </div>
+
+        <div v-else class="text-input-wrap">
+          <input 
+            type="text" 
+            v-model="userAnswer" 
+            placeholder="답을 입력하세요..."
+            @keyup.enter="submitAnswer"
+          />
+          <button @click="submitAnswer">결정</button>
+        </div>
+      </div>
+
+      <div class="feedback-msg" :class="{ 'is-correct': feedbackMessage.includes('정답') }">
+        {{ feedbackMessage }}
+      </div>
+
+      <div class="actions">
+        <button class="hint-btn">힌트 보기</button>
+        <button v-if="puzzle.id >= 11" @click="forceCorrect" class="skip-btn">AI 패스</button>
+        <router-link to="/" class="back-link">목록으로</router-link>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.text-area input {
+.puzzle-container {
+  display: flex;
+  justify-content: center;
+  padding: 20px 10px;
+}
+.puzzle-card {
+  background-color: #fdf5e6; /* 양피지 색상 */
+  border: 4px solid #5d4037;
+  border-radius: 15px;
   width: 100%;
+  max-width: 500px;
+  padding: 25px;
+  box-shadow: 10px 10px 0px rgba(0,0,0,0.1);
+}
+.puzzle-no {
+  font-family: 'serif';
+  font-weight: bold;
+  color: #8d6e63;
+}
+.puzzle-title {
+  font-size: 22px;
+  margin: 10px 0;
+  border-bottom: 2px solid #5d4037;
+  padding-bottom: 10px;
+}
+.puzzle-image {
+  margin: 15px 0;
+  border: 2px solid #5d4037;
+  background: white;
+  padding: 5px;
+}
+.puzzle-image img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.description {
+  line-height: 1.6;
+  font-size: 17px;
+  margin-bottom: 25px;
+}
+.text-input-wrap {
+  display: flex;
+  gap: 10px;
+}
+.text-input-wrap input {
+  flex: 1;
   padding: 12px;
+  border: 2px solid #5d4037;
+  border-radius: 8px;
   font-size: 16px;
-  border: 2px solid #ccc;
-  border-radius: 6px;
-  box-sizing: border-box;
 }
-
-.text-area input:focus {
-  border-color: #42b883;
-  outline: none;
+.text-input-wrap button {
+  background: #5d4037;
+  color: white;
+  border: none;
+  padding: 0 20px;
+  border-radius: 8px;
+  cursor: pointer;
 }
-
-.input-guide {
-  font-size: 13px;
-  color: #666;
-  margin-top: 8px;
-  text-align: left;
+.puzzle-image-placeholder {
+  text-align: center; margin: 15px 0; padding: 20px;
+  border: 2px dashed #8d6e63; background-color: rgba(255,255,255,0.5);
 }
+.generate-img-btn {
+  background-color: #8d6e63; color: white; border: none;
+  padding: 10px 20px; font-size: 14px; border-radius: 6px; cursor: pointer;
+}
+.generate-img-btn:disabled { background-color: #ccc; cursor: wait; }
+.feedback-msg {
+  margin-top: 15px;
+  height: 24px;
+  font-weight: bold;
+  color: #d32f2f;
+}
+.feedback-msg.is-correct { color: #388e3c; }
+.actions {
+  margin-top: 30px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.skip-btn { font-size: 12px; background: none; border: none; color: #999; cursor: pointer; text-decoration: underline; }
 </style>
