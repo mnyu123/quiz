@@ -5,12 +5,10 @@ import OpenAI from 'openai'
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 export const handler: Handler = async (event) => {
-  if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' }
-
   try {
     const { puzzleId, prompt } = JSON.parse(event.body || '{}')
 
-    // 💡 2026년 최신 공식 이미지 모델 'gpt-image-2' 적용!
+    // 1. AI 그림 그리기 (시간제한 10초 무시하고 여유롭게 진행!)
     const imageResponse = await openai.images.generate({
       model: "gpt-image-2",
       prompt: prompt,
@@ -19,7 +17,7 @@ export const handler: Handler = async (event) => {
     });
     const imageUrl = imageResponse.data[0].url;
 
-    // 2. 그려진 그림 주소를 공용 저장소 해당 문제에 업데이트하기
+    // 2. 그려진 그림 주소를 공용 저장소에 업데이트
     const store = getStore({
       name: 'shared-puzzles-v2',
       siteID: process.env.NETLIFY_SITE_ID,
@@ -35,9 +33,9 @@ export const handler: Handler = async (event) => {
       await store.set('list', JSON.stringify(currentList))
     }
 
-    return { statusCode: 200, body: JSON.stringify({ imageUrl }) }
+    return { statusCode: 200, body: "Success" }
   } catch (error) {
-    console.error("이미지 생성 에러:", error)
-    return { statusCode: 500, body: JSON.stringify({ error: '이미지 생성 실패' }) }
+    console.error("백그라운드 이미지 생성 에러:", error)
+    return { statusCode: 500, body: "Error" }
   }
 }

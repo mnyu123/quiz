@@ -38,27 +38,52 @@ const forceCorrect = () => {
   store.solvedPuzzles.push(puzzleId)
   feedbackMessage.value = 'AI 오류로 인해 통과 처리되었습니다. 🚀'
 }
+
 const isGeneratingImage = ref(false)
+let pollInterval = null
 
 const generateImage = async () => {
   if (!puzzle.value.image_prompt) return alert('이미지 프롬프트가 없습니다.')
   
   isGeneratingImage.value = true
+
   try {
-    const response = await fetch('/.netlify/functions/generate-image', {
+    // 1. 백그라운드 함수에 "그림 그려줘!" 던지기 (1초 만에 통과됨, 504 에러 원천 차단)
+    await fetch('/.netlify/functions/generate-image-background', {
       method: 'POST',
       body: JSON.stringify({ 
         puzzleId: puzzle.value.id, 
         prompt: puzzle.value.image_prompt 
       })
     })
-    const data = await response.json()
-    if (data.imageUrl) {
-      puzzle.value.imageUrl = data.imageUrl // 화면에 즉시 이미지 표시!
-    }
+
+    // 2. 3초마다 공용 저장소를 찔러서 그림이 완성됐는지 확인
+    pollInterval = setInterval(async () => {
+      const response = await fetch('/.netlify/functions/get-ai-puzzles')
+      if (response.ok) {
+        const aiPuzzles = await response.json()
+        const updatedPuzzle = aiPuzzles.find(p => p.id === puzzleId)
+
+        // 저장소에 드디어 그림 주소가 등록되었다면!
+        if (updatedPuzzle && updatedPuzzle.imageUrl) {
+          puzzle.value.imageUrl = updatedPuzzle.imageUrl
+          clearInterval(pollInterval) // 반복 확인 종료
+          isGeneratingImage.value = false
+        }
+      }
+    }, 3000)
+
+    // 3. 만약 서버가 혼잡해 40초가 넘어가면 무한 대기 방지
+    setTimeout(() => {
+      if (isGeneratingImage.value) {
+        clearInterval(pollInterval)
+        isGeneratingImage.value = false
+        alert('그림을 그리는 데 시간이 조금 더 걸리고 있습니다. 나중에 다시 들어와 보세요!')
+      }
+    }, 40000)
+
   } catch (error) {
-    alert('이미지를 생성하지 못했습니다. (비용 혹은 시간 초과)')
-  } finally {
+    alert('요청 실패')
     isGeneratingImage.value = false
   }
 }
