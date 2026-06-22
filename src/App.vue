@@ -33,6 +33,10 @@ onUnmounted(() => {
 
     <header>
       <h2>🧩 나의 수수께끼 노트</h2>
+      <nav class="main-nav">
+        <router-link to="/" class="nav-btn">📋 목록으로 보기</router-link>
+        <router-link to="/map" class="nav-btn map-btn">🗺️ 3D 마을 돌아다니기</router-link>
+      </nav>
     </header>
 
     <main>
@@ -85,4 +89,18 @@ onUnmounted(() => {
 header {
   margin-bottom: 30px;
 }
+.main-nav {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+.nav-btn {
+  text-decoration: none;
+  padding: 8px 16px;
+  background-color: #eee;
+  color: #333;
+  border-radius: 6px;
+  font-weight: bold;
+}
+.nav-btn.router-link-active { background-color: #42b883; color: white; }
 </style>
