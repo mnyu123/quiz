@@ -7,16 +7,14 @@ import { useRouter } from 'vue-router'
 const store = useProgressStore()
 const router = useRouter()
 
-const allPuzzles = ref([...staticPuzzles]) // 정적 문제와 AI 문제를 합칠 반응형 배열
+const allPuzzles = ref([...staticPuzzles])
 const isLoading = ref(false)
 
-// 화면이 열릴 때 다른 유저들이 만들어둔 AI 문제를 백엔드에서 가져옴
 const loadSharedPuzzles = async () => {
   try {
     const response = await fetch('/.netlify/functions/get-ai-puzzles')
     if (response.ok) {
       const aiPuzzles = await response.json()
-      // 기본 문제 리스트 뒤에 AI 문제들을 이어 붙임
       allPuzzles.value = [...staticPuzzles, ...aiPuzzles]
     }
   } catch (error) {
@@ -31,11 +29,9 @@ onMounted(() => {
 const generateAIPuzzle = async () => {
   isLoading.value = true
   try {
-    // 이제 POST 요청으로 문제를 생성합니다.
     const response = await fetch('/.netlify/functions/generate-puzzle', { method: 'POST' })
     if (!response.ok) throw new Error('서버 응답 오류')
     
-    // 생성이 성공하면 공용 저장소 데이터가 업데이트되었으므로 다시 목록을 갱신합니다.
     await loadSharedPuzzles()
     alert('AI가 전 세계 공용 저장소에 새로운 수수께끼를 등록했습니다!')
   } catch (error) {
@@ -46,7 +42,6 @@ const generateAIPuzzle = async () => {
 }
 
 const goToPuzzle = (id) => {
-  // 상세 화면 렌더링을 위해 전체 리스트를 임시로 메모리에 유지하거나 router props 활용
   router.push(`/puzzle/${id}`)
 }
 </script>
@@ -71,7 +66,7 @@ const goToPuzzle = (id) => {
       @click="goToPuzzle(puzzle.id)"
     >
       <span>
-        <span v-if="puzzle.id >= 101" class="ai-badge">AI</span>
+        <span v-if="puzzle.id >= 11" class="ai-badge">AI</span>
         {{ puzzle.id }}번: {{ puzzle.title }}
       </span>
       <span v-if="store.solvedPuzzles.includes(puzzle.id)"> ⭕ 해결됨</span>
@@ -80,53 +75,11 @@ const goToPuzzle = (id) => {
 </template>
 
 <style scoped>
-.puzzle-item {
-  border: 1px solid #ccc;
-  padding: 15px;
-  margin-bottom: 10px;
-  cursor: pointer;
-  border-radius: 8px;
-  display: flex;
-  justify-content: space-between;
-}
-.puzzle-item:hover {
-  background-color: #f5f5f5;
-}
-
-/* AI 섹션 스타일 추가 */
-.ai-section {
-  background-color: #f0f8ff;
-  padding: 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  text-align: center;
-}
-.ai-btn {
-  background-color: #42b883;
-  color: white;
-  border: none;
-  padding: 12px 20px;
-  font-size: 16px;
-  font-weight: bold;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-.ai-btn:hover:not(:disabled) {
-  background-color: #33a06f;
-}
-.ai-btn:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
-}
-/* 기존 스타일 유지하고 아래 배지만 추가 */
-.ai-badge {
-  background-color: #42b883;
-  color: white;
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-right: 5px;
-  vertical-align: middle;
-}
+.puzzle-item { border: 1px solid #ccc; padding: 15px; margin-bottom: 10px; cursor: pointer; border-radius: 8px; display: flex; justify-content: space-between; }
+.puzzle-item:hover { background-color: #f5f5f5; }
+.ai-section { background-color: #f0f8ff; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: center; }
+.ai-btn { background-color: #42b883; color: white; border: none; padding: 12px 20px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; transition: background-color 0.3s; }
+.ai-btn:hover:not(:disabled) { background-color: #33a06f; }
+.ai-btn:disabled { background-color: #ccc; cursor: not-allowed; }
+.ai-badge { background-color: #42b883; color: white; font-size: 11px; padding: 2px 6px; border-radius: 4px; margin-right: 5px; vertical-align: middle; }
 </style>
